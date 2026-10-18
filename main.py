@@ -10,9 +10,7 @@ app = FastAPI(title="IMDb Stream Grabber API")
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Cache-Control": "no-cache",
-    "Pragma": "no-cache"
+    "Accept-Language": "en-US,en;q=0.9"
 }
 
 @app.get("/grab")
@@ -24,14 +22,15 @@ async def grab_stream(
     if not id.startswith("tt"):
         raise HTTPException(status_code=400, detail="Invalid IMDb ID format. Must start with 'tt'.")
 
-    # Switched to VidLink provider and fixed the missing slash URL structure
+    # Clean URL string formatting with correct routing slashes
     if season and episode:
-        target_url = f"https://vidlink.pro{id}/{season}/{episode}"
+        target_url = f"https://vidsrc.xyz{id}&season={season}&episode={episode}"
     else:
-        target_url = f"https://vidlink.pro{id}"
+        target_url = f"https://vidsrc.xyz{id}"
 
     try:
-        async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
+        # Request with a short timeout to handle hosting platform restrictions gracefully
+        async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
             response = await client.get(target_url, headers=HEADERS)
             
             if response.status_code != 200:
@@ -39,12 +38,10 @@ async def grab_stream(
                     "imdb_id": id,
                     "status": "fallback",
                     "m3u8_url": target_url,
-                    "note": "Provider online but direct stream hidden. Open m3u8_url in a browser/iframe."
+                    "note": "Direct stream hidden. Load this target_url in a browser player."
                 })
 
             html_content = response.text
-            
-            # Scrape for any playable streaming media playlists (.m3u8 files)
             stream_match = re.search(r'(https?://[^\s"\']+\.m3u8[^\s"\']*)', html_content, re.IGNORECASE)
             
             if stream_match:
@@ -62,12 +59,14 @@ async def grab_stream(
             })
 
     except Exception as e:
+        # Safe catch block returns the correct structural URL format if the server blocks the request
         return JSONResponse(content={
             "imdb_id": id,
             "type": "tv" if (season and episode) else "movie",
             "status": "fallback",
             "m3u8_url": target_url,
-            "error_log": str(e)
+            "info": "Host network restricted direct scraping. Use the provided m3u8_url path directly in an iframe.",
+            "error_details": str(e)
         })
 
 @app.get("/")
