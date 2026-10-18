@@ -21,10 +21,11 @@ async def grab_stream(
     if not id.startswith("tt"):
         raise HTTPException(status_code=400, detail="Invalid IMDb ID format. Must start with 'tt'.")
 
-    if season and episode:
-        target_url = f"https://vidsrc.toembed/tv/{id}/{season}/{episode}"
-    else:
-        target_url = f"https://vidsrc.toembed/movie/{id}"
+if season and episode:
+    target_url = f"https://vidsrc.cc{id}/{season}/{episode}"
+else:
+    target_url = f"https://vidsrc.cc{id}"
+
 
     try:
         async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
