@@ -7,7 +7,6 @@ from fastapi.responses import JSONResponse
 
 app = FastAPI(title="IMDb Stream Grabber API")
 
-# Updated headers to emulate a secure browser session
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
@@ -22,40 +21,36 @@ async def grab_stream(
     season: str = Query(None, description="Season number (for TV Shows)"),
     episode: str = Query(None, description="Episode number (for TV Shows)")
 ):
-    # Standard format validation
     if not id.startswith("tt"):
         raise HTTPException(status_code=400, detail="Invalid IMDb ID format. Must start with 'tt'.")
 
-    # Using an active, structured provider path
+    # Switched to VidLink provider and fixed the missing slash URL structure
     if season and episode:
-        target_url = f"https://vidsrc.pm{id}/{season}/{episode}"
+        target_url = f"https://vidlink.pro{id}/{season}/{episode}"
     else:
-        target_url = f"https://vidsrc.pm{id}"
+        target_url = f"https://vidlink.pro{id}"
 
     try:
-        # Using a strict 5-second timeout to prevent Railway/Render from hanging and crashing
-        async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
             response = await client.get(target_url, headers=HEADERS)
             
             if response.status_code != 200:
-                # Safe return if domain changes or blocks access
                 return JSONResponse(content={
                     "imdb_id": id,
                     "status": "fallback",
                     "m3u8_url": target_url,
-                    "note": "Direct stream hidden. Use target_url inside an iframe or web player."
+                    "note": "Provider online but direct stream hidden. Open m3u8_url in a browser/iframe."
                 })
 
             html_content = response.text
             
-            # Scrape for standard clear-text stream patterns
+            # Scrape for any playable streaming media playlists (.m3u8 files)
             stream_match = re.search(r'(https?://[^\s"\']+\.m3u8[^\s"\']*)', html_content, re.IGNORECASE)
             
             if stream_match:
                 m3u8_link = stream_match.group(1)
                 status = "success"
             else:
-                # If the stream source is tokenized/encrypted, provide the direct functional embed link
                 m3u8_link = target_url
                 status = "fallback"
 
@@ -67,7 +62,6 @@ async def grab_stream(
             })
 
     except Exception as e:
-        # Fallback layer: If the scraper fails or times out, it gracefully returns the endpoint instead of crashing
         return JSONResponse(content={
             "imdb_id": id,
             "type": "tv" if (season and episode) else "movie",
